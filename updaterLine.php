@@ -20,28 +20,30 @@ $File = new File();
 try {
     $data[LINE_CONTENT_NAME] = $File->load(__DIR__ . '/data/' . LINE_CONTENT_NAME . '.json', LINE_DATA_TTL);
 
-    if (GOLANG_LOADER_LINE_ENABLE) {
+    if (GOLANG_LOADER_LINE_ENABLE && !empty($data[LINE_CONTENT_NAME])) {
         $allFactors = [];
 
         $allRedisEvents = $Redis->keys(CACHE_KEY_RAW_LINE_EVENTS . ':*');
         $redisPrefix = $Redis->getOption(Redis::OPT_PREFIX);
 
         printf("[%s] Info: Работа с таблицей %s в Redis, количество событий: %s %s", date('d/M/Y H:i:s'), $Redis->getDbNum(), count($allRedisEvents), PHP_EOL);
-        foreach ($allRedisEvents as $key) {
-            // Removing Redis prefix
-            $key = str_replace($redisPrefix, '', $key);
-            $event = $Redis->get($key);
-            $allFactor = json_decode($event, true);
-            if (empty($allFactor)) {
-                continue;
-            }
-            if (is_array($allFactor) && !empty($allFactor['customFactors'])) {
-                $allFactors = array_merge($allFactors, $allFactor['customFactors']);
-            }
-        }
 
-        $data[LINE_CONTENT_NAME]['customFactors'] = $allFactors;
-        $data[LINE_CONTENT_NAME]['customFactors'] = Helper::reindexFactors($data[LINE_CONTENT_NAME] ?? []);
+        if ($allRedisEvents) {
+            foreach ($allRedisEvents as $key) {
+                // Removing Redis prefix
+                $key = str_replace($redisPrefix, '', $key);
+                $event = $Redis->get($key);
+                $allFactor = json_decode($event, true);
+                if (empty($allFactor)) {
+                    continue;
+                }
+                if (is_array($allFactor) && !empty($allFactor['customFactors'])) {
+                    $allFactors = array_merge($allFactors, $allFactor['customFactors']);
+                }
+            }
+            $data[LINE_CONTENT_NAME]['customFactors'] = $allFactors;
+            $data[LINE_CONTENT_NAME]['customFactors'] = Helper::reindexFactors($data[LINE_CONTENT_NAME] ?? []);
+        }
     }
 } catch ( \Exception $e ) {
     printf("[%s] Error: %s %s", date('d/M/Y H:i:s'), $e->getMessage(), PHP_EOL);
@@ -50,7 +52,9 @@ try {
 
 
 if( empty($data[LINE_CONTENT_NAME]) ) {
-    $Redis->del(Factors::HKEY_VALUES);
+    $type = 0;
+    $redisKey = sprintf(Factors::HKEY_VALUES, $type);
+    $Redis->del($redisKey);
 
     printf("[%s] Error: Не пришли данные %s", date('d/M/Y H:i:s'), PHP_EOL);
     exit(PHP_EOL);
@@ -67,13 +71,6 @@ Margin::setConstraint($Crud->getMarginConstraint());
 Margin::setDefaults($Crud->findMarkets());
 
 foreach ($data as $typeStr => $content) {
-    if( empty($content) ) {
-        if ($typeStr === LINE_CONTENT_NAME) {
-            $Redis->del(Factors::HKEY_VALUES);
-        }
-
-        continue;
-    }
 
     $contentTime = microtime(true);
 
@@ -180,7 +177,7 @@ foreach ($data as $typeStr => $content) {
         $finishedEvents = array_diff_key($oldStatusValues, $statusValues);
     }
 
-//    $Crud->updateMultipleStatusAndDisableOld($type, $parserId, $statusValues, $finishedEvents);
+    $Crud->updateMultipleStatusAndDisableOld($type, $parserId, $statusValues, $finishedEvents);
 
     $Redis->set(sprintf(Factors::KEY_STATUSES, $type), serialize($statusValues));
 

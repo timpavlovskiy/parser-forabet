@@ -17,12 +17,44 @@ $data = [
 $Crud = new Crud(getPDO(), getRedis());
 $File = new File();
 
-$data[LIVE_CONTENT_NAME] = $File->load(__DIR__ . '/data/' . LIVE_CONTENT_NAME . '.json', LIVE_DATA_TTL);
-$data[LIVE_CONTENT_NAME] = is_array($data[LIVE_CONTENT_NAME]) ? $data[LIVE_CONTENT_NAME] : [];
+try {
+    $data[LIVE_CONTENT_NAME] = $File->load(__DIR__ . '/data/' . LIVE_CONTENT_NAME . '.json', LIVE_DATA_TTL);
+
+    if (GOLANG_LOADER_LIVE_ENABLE && !empty($data[LIVE_CONTENT_NAME])) {
+        $allFactors = [];
+
+        $allRedisEvents = $Redis->keys(CACHE_KEY_RAW_LINE_EVENTS . ':*');
+        $redisPrefix = $Redis->getOption(Redis::OPT_PREFIX);
+
+        printf("[%s] Info: Работа с таблицей %s в Redis, количество событий: %s %s", date('d/M/Y H:i:s'), $Redis->getDbNum(), count($allRedisEvents), PHP_EOL);
+
+        if ($allRedisEvents) {
+            foreach ($allRedisEvents as $key) {
+                // Removing Redis prefix
+                $key = str_replace($redisPrefix, '', $key);
+                $event = $Redis->get($key);
+                $allFactor = json_decode($event, true);
+                if (empty($allFactor)) {
+                    continue;
+                }
+                if (is_array($allFactor) && !empty($allFactor['customFactors'])) {
+                    $allFactors = array_merge($allFactors, $allFactor['customFactors']);
+                }
+            }
+            $data[LIVE_CONTENT_NAME]['customFactors'] = $allFactors;
+            $data[LIVE_CONTENT_NAME]['customFactors'] = Helper::reindexFactors($data[LIVE_CONTENT_NAME] ?? []);
+        }
+    }
+} catch ( \Exception $e ) {
+    printf("[%s] Error: %s %s", date('d/M/Y H:i:s'), $e->getMessage(), PHP_EOL);
+    exit(PHP_EOL);
+}
 
 
 if( empty($data[LIVE_CONTENT_NAME]) ) {
-    $Redis->del(Factors::HKEY_VALUES);
+    $type = 1;
+    $redisKey = sprintf(Factors::HKEY_VALUES, $type);
+    $Redis->del($redisKey);
 
     printf("[%s] Error: Не пришли данные %s", date('d/M/Y H:i:s'), PHP_EOL);
     exit(PHP_EOL);
@@ -39,13 +71,6 @@ Margin::setConstraint($Crud->getMarginConstraint());
 Margin::setDefaults($Crud->findMarkets());
 
 foreach ($data as $typeStr => $content) {
-    if( empty($content) ) {
-        if ($typeStr === LIVE_CONTENT_NAME) {
-            $Redis->del(Factors::HKEY_VALUES);
-        }
-
-        continue;
-    }
 
     $contentTime = microtime(true);
 

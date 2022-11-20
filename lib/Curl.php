@@ -184,7 +184,11 @@ class Curl
         printf("[%s] Получение линии \t(старт) %s", date('d/M/Y H:i:s'), PHP_EOL);
 
 //        $url = "http://{$this->_resourceUrl}/events/list";
-        $url = "http://line04.by0e87-resources.by/events/list";
+        if (PARSER_NEW_API_ENABLE) {
+            $url = "http://{$this->_www}/events/list";
+        } else {
+            $url = "http://line32.bkfon-resources.com/live/currentLine/";
+        }
         $out = $this->_load($url . '?lang=ru');
 
         if (empty($out)) {
