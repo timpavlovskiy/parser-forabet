@@ -18,7 +18,7 @@ ${scriptName}  loadEvents \
  --redisHostEnvName 'REDIS_HOST' \
  --redisPortEnvName 'REDIS_PORT' \
  --redisSelectDb 4 \
- --redisPrefix '1000:' \
+ --redisPrefix '1001:' \
  --redisPrefixForEvent 'PRS:FB:LIVE' \
  --redisEventKeyTTL 7 \
  --redisEventIdsChannel 'PRS:FB:LIVE:LOADER_GO:EVENT_IDS' \
